@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.remoteclient.ui.DashboardScreen
 import com.example.remoteclient.ui.LoginScreen
+import com.example.remoteclient.ui.TargetSelectionScreen
 import com.example.remoteclient.ui.theme.RemoteClientTheme
 import com.example.remoteclient.viewmodel.LoginViewModel
 
@@ -32,6 +33,11 @@ class MainActivity : ComponentActivity() {
                             session = state.session,
                             endpoint = endpoint,
                             onSessionClosed = loginViewModel::sessionClosed,
+                            modifier = Modifier.padding(innerPadding)
+                        )
+                        is LoginViewModel.LoginState.AwaitingTarget -> TargetSelectionScreen(
+                            state = state,
+                            viewModel = loginViewModel,
                             modifier = Modifier.padding(innerPadding)
                         )
                         else -> LoginScreen(

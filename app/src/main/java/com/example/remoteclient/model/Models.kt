@@ -20,14 +20,34 @@ data class RemoteTarget(
 data class HandshakeRequest(
     @SerializedName("username") val username: String,
     @SerializedName("password") val password: String,
-    @SerializedName("device_name") val deviceName: String,
+    @SerializedName("device_name") val deviceName: String
+)
+
+data class BindTargetRequest(
     @SerializedName("target_hwnd") val targetHwnd: Long
+)
+
+data class RemoteChatMessage(
+    @SerializedName("id") val id: String,
+    @SerializedName("turn_id") val turnId: String,
+    @SerializedName("side") val side: String,
+    @SerializedName("text") val text: String,
+    @SerializedName("timestamp") val timestamp: String
+)
+
+data class ChatHistoryResponse(
+    @SerializedName("messages") val messages: List<RemoteChatMessage>,
+    @SerializedName("has_more") val hasMore: Boolean = false
+)
+
+data class SendChatMessageRequest(
+    @SerializedName("text") val text: String
 )
 
 data class HandshakeResponse(
     @SerializedName("session_id") val sessionId: String,
     @SerializedName("device_name") val deviceName: String,
-    @SerializedName("target") val target: RemoteTarget,
+    @SerializedName("target") val target: RemoteTarget?,
     @SerializedName("connected_at") val connectedAt: String,
     @SerializedName("permissions") val permissions: RemotePermissions
 )

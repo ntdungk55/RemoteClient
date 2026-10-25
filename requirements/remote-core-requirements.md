@@ -112,9 +112,17 @@ Add the following dependencies:
 #### **6.1 Server Endpoints**
 - **Base URL**: The server runs on `http://127.0.0.1:8765` by default.
 - **Endpoints**:
-  - `GET /status`: Retrieve the current server status.
-  - `POST /handshake`: Perform a handshake to establish a session.
+  - `POST /handshake`: Authenticate credentials and establish a pending session.
+  - `GET /status`: Retrieve available game windows after the handshake.
+  - `POST /sessions/{id}/target`: Bind the selected game window to the session.
+  - `GET /sessions/{id}/messages?offset={offset}&limit={limit}`: Retrieve a page of the selected window's shared chat history; the server caps each page at 10 messages.
+  - `POST /sessions/{id}/messages`: Submit a prompt to that window's AI chat.
+  - `GET /sessions/{id}/frame`: Capture the selected game window for live viewing.
+  - `GET /sessions/{id}/stream` (WebSocket): Stream JPEG frames and game-state updates.
   - `POST /sessions/{id}/close`: Close a specific session.
+
+The client must authenticate first, then load and display available game windows, and bind the user's selection to that session. A session must not be silently bound to a different window. The user may explicitly change the bound window using the target endpoint.
+Every session-scoped endpoint, including the WebSocket upgrade, requires `Authorization: Bearer <session_id>`.
 
 #### **6.2 Authentication**
 - **Credentials**:

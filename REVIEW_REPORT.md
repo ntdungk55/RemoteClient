@@ -83,34 +83,20 @@ Required action:
 
 If HTTP cleartext is retained, configure the Android network security policy appropriately. Prefer HTTPS for non-local deployments.
 
-### BLOCKER-04: Handshake request is incomplete
+### Handshake and target selection flow
 
 Client:
 
-- `app/src/main/java/com/example/remoteclient/network/ApiService.kt:12`
-- `app/src/main/java/com/example/remoteclient/model/Models.kt:32-35`
+- `app/src/main/java/com/example/remoteclient/network/ApiService.kt`
+- `app/src/main/java/com/example/remoteclient/model/Models.kt`
 
-The client sends only `username` and `password`.
+The client authenticates first with `username`, `password`, and `device_name`. The server creates a pending session with no target.
 
-The server requires:
+After authentication, the client loads `/status` and displays the available game windows. The selected window is attached to the pending session with `POST /sessions/{id}/target` and `target_hwnd`.
 
-```json
-{
-  "username": "1234",
-  "password": "5678",
-  "device_name": "Android",
-  "target_hwnd": 12345
-}
-```
+The server continues to accept `target_hwnd` in `/handshake` for compatibility with existing clients.
 
-Without `target_hwnd`, the server returns `409 target_unavailable`.
-
-Required action:
-
-- Add a handshake request model containing `username`, `password`, `device_name`, and `target_hwnd`.
-- Load targets from `/status`.
-- Add UI for selecting exactly one target before or during handshake.
-- Keep the selected target bound to the session; do not silently switch targets after handshake.
+Bound sessions expose shared chat history and prompt submission at `/sessions/{id}/messages`; game-window frames are available at `/sessions/{id}/frame`.
 
 ### BLOCKER-05: `/status` response model does not match the server
 
@@ -300,4 +286,3 @@ Required tests:
 - [ ] Disconnects trigger heartbeat/backoff/stale-state behavior.
 - [ ] No silent target switching or privilege escalation occurs.
 - [ ] Contract and integration tests pass.
-
