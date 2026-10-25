@@ -1,70 +1,83 @@
 package com.example.remoteclient.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.remoteclient.model.RemoteSession
-import com.example.remoteclient.network.ApiService
+import com.example.remoteclient.model.ServerError
+import com.example.remoteclient.network.ApiConfig
+import com.example.remoteclient.network.SecureSessionStore
+import com.google.gson.Gson
+import com.google.gson.JsonParseException
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
 
-class DashboardViewModel : ViewModel() {
+class DashboardViewModel(application: Application) : AndroidViewModel(application) {
+    private val sessionStore = SecureSessionStore(application)
 
-    private val _serverState = MutableStateFlow("Unknown")
-    val serverState: StateFlow<String> = _serverState
+    private val _isClosing = MutableStateFlow(false)
+    val isClosing: StateFlow<Boolean> = _isClosing
 
-    private val _sessions = MutableStateFlow<List<RemoteSession>>(emptyList())
-    val sessions: StateFlow<List<RemoteSession>> = _sessions
+    private val _closeError = MutableStateFlow<String?>(null)
+    val closeError: StateFlow<String?> = _closeError
 
-    private val apiService: ApiService by lazy {
-        Retrofit.Builder()
-            .baseUrl("http://127.0.0.1:8765")
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(ApiService::class.java)
-    }
+    private val _closedSessionId = MutableStateFlow<String?>(null)
+    val closedSessionId: StateFlow<String?> = _closedSessionId
 
-    init {
-        fetchServerState()
-        fetchSessions()
-    }
-
-    private fun fetchServerState() {
+    fun closeSession(baseUrl: String, sessionId: String) {
+        if (_isClosing.value) return
         viewModelScope.launch {
+            _isClosing.value = true
+            _closeError.value = null
+            _closedSessionId.value = null
             try {
-                val response = apiService.getStatus().execute()
-                if (response.isSuccessful) {
-                    _serverState.value = response.body()?.state?.name ?: "Unknown"
+                val response = ApiConfig.createApiService(baseUrl)
+                    .closeSession(sessionId, ApiConfig.CLOSE_SESSION_AUTHORIZATION)
+                if (!response.isSuccessful) {
+                    throw IOException(responseError(response))
                 }
-            } catch (e: Exception) {
-                _serverState.value = "Error"
+                sessionStore.clear()
+                _closedSessionId.value = sessionId
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                _closeError.value = exceptionMessage(exception)
+            } finally {
+                _isClosing.value = false
             }
         }
     }
 
-    private fun fetchSessions() {
-        viewModelScope.launch {
+    private fun responseError(response: retrofit2.Response<*>): String {
+        val serverError = response.errorBody()?.string()?.let { body ->
             try {
-                val response = apiService.getStatus().execute()
-                if (response.isSuccessful) {
-                    _sessions.value = response.body()?.sessions ?: emptyList()
-                }
-            } catch (e: Exception) {
-                _sessions.value = emptyList()
+                Gson().fromJson(body, ServerError::class.java)
+            } catch (_: JsonParseException) {
+                null
             }
         }
+        val code = serverError?.code ?: serverError?.error
+        val detail = serverError?.message ?: serverError?.detail
+        val description = when {
+            response.code() == 401 -> "Session authorization was rejected"
+            response.code() == 403 || code == "permission_denied" -> "Permission denied"
+            response.code() == 404 -> "The server or session was not found"
+            response.code() >= 500 -> "The server encountered an error"
+            else -> "Could not close the session"
+        }
+        return listOfNotNull(description, "HTTP ${response.code()}", code, detail)
+            .joinToString(": ")
     }
 
-    fun closeSession(sessionId: String) {
-        viewModelScope.launch {
-            try {
-                apiService.closeSession(sessionId).execute()
-                fetchSessions() // Refresh sessions after closing
-            } catch (e: Exception) {
-                // Handle error
-            }
-        }
+    private fun exceptionMessage(exception: Exception): String = when (exception) {
+        is SocketTimeoutException -> "The server timed out. Try closing the session again."
+        is UnknownHostException -> "Server host could not be reached. Check the URL and network."
+        is IOException -> exception.message ?: "Network request failed."
+        is IllegalArgumentException -> exception.message ?: "Check the server URL."
+        else -> "Could not close the session: ${exception.message ?: exception.javaClass.simpleName}"
     }
 }

@@ -2,39 +2,49 @@ package com.example.remoteclient.model
 
 import com.google.gson.annotations.SerializedName
 
-// Represents the server state
-enum class RemoteServerState {
-    STOPPED, STARTING, RUNNING, STOPPING, ERROR
-}
-
-// Represents the server status response
 data class ServerStatus(
-    @SerializedName("state") val state: RemoteServerState,
+    @SerializedName("status") val status: String,
     @SerializedName("endpoint") val endpoint: String,
-    @SerializedName("sessions") val sessions: List<RemoteSession>
+    @SerializedName("sessions") val sessions: Int,
+    @SerializedName("targets") val targets: List<RemoteTarget>
 )
 
-// Represents a remote session
-data class RemoteSession(
-    @SerializedName("id") val id: String,
-    @SerializedName("target") val target: RemoteTarget
-)
-
-// Represents a remote target (e.g., a window or process)
 data class RemoteTarget(
-    @SerializedName("hwnd") val hwnd: Int,
-    @SerializedName("pid") val pid: Int,
+    @SerializedName("hwnd") val hwnd: Long,
+    @SerializedName("pid") val pid: Long,
     @SerializedName("window_title") val windowTitle: String,
-    @SerializedName("process_name") val processName: String
+    @SerializedName("process_name") val processName: String,
+    @SerializedName("creation_time") val creationTime: String
 )
 
-// Represents credentials for authentication
-data class RemoteCredentials(
+data class HandshakeRequest(
     @SerializedName("username") val username: String,
-    @SerializedName("password") val password: String
+    @SerializedName("password") val password: String,
+    @SerializedName("device_name") val deviceName: String,
+    @SerializedName("target_hwnd") val targetHwnd: Long
 )
 
-// Represents the handshake response
 data class HandshakeResponse(
-    @SerializedName("session_id") val sessionId: String
+    @SerializedName("session_id") val sessionId: String,
+    @SerializedName("device_name") val deviceName: String,
+    @SerializedName("target") val target: RemoteTarget,
+    @SerializedName("connected_at") val connectedAt: String,
+    @SerializedName("permissions") val permissions: RemotePermissions
+)
+
+data class RemotePermissions(
+    @SerializedName("connect") val connect: Boolean,
+    @SerializedName("view_stream") val viewStream: Boolean,
+    @SerializedName("view_game_state") val viewGameState: Boolean,
+    @SerializedName("send_chat") val sendChat: Boolean,
+    @SerializedName("discover_tools") val discoverTools: Boolean,
+    @SerializedName("call_readonly_tools") val callReadonlyTools: Boolean,
+    @SerializedName("call_mutating_tools") val callMutatingTools: Boolean
+)
+
+data class ServerError(
+    @SerializedName("code") val code: String?,
+    @SerializedName("error") val error: String?,
+    @SerializedName("message") val message: String?,
+    @SerializedName("detail") val detail: String?
 )

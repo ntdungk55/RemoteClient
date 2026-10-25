@@ -1,17 +1,25 @@
 package com.example.remoteclient.network
 
-import com.example.remoteclient.model.*
-import retrofit2.Call
-import retrofit2.http.*
+import com.example.remoteclient.model.HandshakeRequest
+import com.example.remoteclient.model.HandshakeResponse
+import com.example.remoteclient.model.ServerStatus
+import retrofit2.Response
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.POST
+import retrofit2.http.Path
 
 interface ApiService {
+    @GET("status")
+    suspend fun getStatus(): Response<ServerStatus>
 
-    @GET("/status")
-    fun getStatus(): Call<ServerStatus>
+    @POST("handshake")
+    suspend fun handshake(@Body request: HandshakeRequest): Response<HandshakeResponse>
 
-    @POST("/handshake")
-    fun handshake(@Body credentials: RemoteCredentials): Call<HandshakeResponse>
-
-    @POST("/sessions/{id}/close")
-    fun closeSession(@Path("id") sessionId: String): Call<Void>
+    @POST("sessions/{id}/close")
+    suspend fun closeSession(
+        @Path("id") sessionId: String,
+        @Header("Authorization") authorization: String
+    ): Response<Unit>
 }
