@@ -2,12 +2,17 @@ package com.example.remoteclient.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -24,7 +29,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -38,23 +42,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Splitscreen
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.CircleShape
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.delay
@@ -64,6 +63,7 @@ import com.example.remoteclient.model.RemoteTarget
 import com.example.remoteclient.viewmodel.DashboardViewModel
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun DashboardScreen(
     session: HandshakeResponse,
     endpoint: String,
@@ -75,7 +75,7 @@ fun DashboardScreen(
     val currentSession = activeSession ?: session
     val isClosing by viewModel.isClosing.collectAsState()
     val closedSessionId by viewModel.closedSessionId.collectAsState()
-    var mode by remember(session.sessionId) { mutableStateOf(DashboardMode.ChatOnly) }
+    val gameFrame by viewModel.gameFrame.collectAsState()
     var showCloseConfirmation by remember(session.sessionId) { mutableStateOf(false) }
     var showTargetPicker by remember(session.sessionId) { mutableStateOf(false) }
     var requestedTargetHwnd by remember(session.sessionId) { mutableStateOf<Long?>(null) }
@@ -93,16 +93,14 @@ fun DashboardScreen(
             showTargetPicker = false
         }
     }
-    LaunchedEffect(session.sessionId, currentSession.target?.hwnd, mode) {
+    LaunchedEffect(session.sessionId, currentSession.target?.hwnd) {
         viewModel.stopGameStream()
-        if (mode != DashboardMode.ChatOnly) {
+        if (currentSession.permissions.viewStream) {
             viewModel.startGameStream(endpoint, session.sessionId)
         }
         try {
             while (true) {
-                if (mode != DashboardMode.ViewOnly) {
-                    viewModel.refreshMessages(endpoint, session.sessionId)
-                }
+                viewModel.refreshMessages(endpoint, session.sessionId)
                 delay(1500)
             }
         } finally {
@@ -110,88 +108,85 @@ fun DashboardScreen(
         }
     }
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 6.dp, vertical = 0.dp)
             .then(modifier),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        horizontalAlignment = Alignment.Start
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                currentSession.target?.windowTitle?.ifBlank { "Connected" } ?: "Connected",
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                modifier = Modifier.weight(1f)
-            )
-            IconButton(
-                onClick = {
-                    showTargetPicker = true
-                    viewModel.loadTargets(endpoint)
-                },
-                enabled = !isClosing
-            ) {
-                Icon(Icons.Filled.SwapHoriz, contentDescription = "Change game window")
+        val density = LocalDensity.current
+        var maximumAvailableHeight by remember(session.sessionId) { mutableStateOf(maxHeight) }
+        LaunchedEffect(maxHeight) {
+            if (maxHeight > maximumAvailableHeight) {
+                maximumAvailableHeight = maxHeight
             }
-            IconButton(
-                onClick = { showCloseConfirmation = true },
-                enabled = !isClosing
-            ) {
-                if (isClosing) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                } else {
-                    Icon(Icons.Filled.Close, contentDescription = "Close session")
+        }
+        val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
+        val headerHeight = if (isKeyboardVisible) 0.dp else 48.dp
+        val gap = 2.dp
+        val availableContentHeight = (maxHeight - headerHeight - gap * 2).coerceAtLeast(0.dp)
+        val normalContentHeight = (maximumAvailableHeight - 48.dp - gap * 2).coerceAtLeast(0.dp)
+        val maxGameHeight = normalContentHeight * 0.5f
+        val gameImageHeight = gameFrame?.let { frame ->
+            maxWidth * frame.height.toFloat() / frame.width.toFloat()
+        } ?: maxGameHeight
+        val gameHeight = minOf(maxGameHeight, gameImageHeight)
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(gap),
+            horizontalAlignment = Alignment.Start
+        ) {
+            if (!isKeyboardVisible) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(headerHeight),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        currentSession.target?.windowTitle?.ifBlank { "Connected" } ?: "Connected",
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = {
+                            showTargetPicker = true
+                            viewModel.loadTargets(endpoint)
+                        },
+                        enabled = !isClosing
+                    ) {
+                        Icon(Icons.Filled.SwapHoriz, contentDescription = "Change game window")
+                    }
+                    IconButton(
+                        onClick = { showCloseConfirmation = true },
+                        enabled = !isClosing
+                    ) {
+                        if (isClosing) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        } else {
+                            Icon(Icons.Filled.Close, contentDescription = "Close session")
+                        }
+                    }
                 }
             }
-        }
-        when (mode) {
-            DashboardMode.ViewOnly -> GameViewPanel(viewModel, Modifier.weight(1f))
-            DashboardMode.ChatOnly -> RemoteChatPanel(
-                endpoint, session.sessionId, currentSession.permissions.sendChat, viewModel,
-                Modifier.weight(1f)
-            )
-            DashboardMode.Split -> {
-                GameViewPanel(viewModel, Modifier.weight(1f))
-                RemoteChatPanel(
-                    endpoint, session.sessionId, currentSession.permissions.sendChat, viewModel,
-                    Modifier.weight(1f)
-                )
-            }
-        }
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = RoundedCornerShape(18.dp)
-        ) {
-            Row(
+            GameViewPanel(
+                viewModel = viewModel,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ModeButton(
-                    icon = Icons.Filled.Visibility,
-                    description = "View only",
-                    selected = mode == DashboardMode.ViewOnly,
-                    enabled = currentSession.permissions.viewStream
-                ) { mode = DashboardMode.ViewOnly }
-                ModeButton(
-                    icon = Icons.Filled.Chat,
-                    description = "Chat only",
-                    selected = mode == DashboardMode.ChatOnly
-                ) { mode = DashboardMode.ChatOnly }
-                ModeButton(
-                    icon = Icons.Filled.Splitscreen,
-                    description = "View and chat",
-                    selected = mode == DashboardMode.Split,
-                    enabled = currentSession.permissions.viewStream
-                ) { mode = DashboardMode.Split }
-            }
+                    .height(gameHeight)
+            )
+            RemoteChatPanel(
+                endpoint = endpoint,
+                sessionId = session.sessionId,
+                canSend = currentSession.permissions.sendChat,
+                viewModel = viewModel,
+                isKeyboardVisible = isKeyboardVisible,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
         }
     }
 
@@ -239,42 +234,13 @@ fun DashboardScreen(
     }
 }
 
-private enum class DashboardMode { ViewOnly, ChatOnly, Split }
-
-@Composable
-private fun ModeButton(
-    icon: ImageVector,
-    description: String,
-    selected: Boolean,
-    enabled: Boolean = true,
-    onClick: () -> Unit
-) {
-    IconButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceVariant
-            )
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = description,
-            tint = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
 @Composable
 private fun RemoteChatPanel(
     endpoint: String,
     sessionId: String,
     canSend: Boolean,
     viewModel: DashboardViewModel,
+    isKeyboardVisible: Boolean,
     modifier: Modifier = Modifier
 ) {
     val messages by viewModel.messages.collectAsState()
@@ -285,13 +251,27 @@ private fun RemoteChatPanel(
     var draft by remember(sessionId) { mutableStateOf("") }
     var initialScrollComplete by remember(sessionId) { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty() && !initialScrollComplete) {
-            listState.scrollToItem(messages.lastIndex)
-            initialScrollComplete = true
-        } else if (messages.isNotEmpty() && listState.firstVisibleItemIndex >= messages.lastIndex - 1) {
-            listState.animateScrollToItem(messages.lastIndex)
+    LaunchedEffect(
+        isKeyboardVisible,
+        messages.size,
+        messages.lastOrNull()?.id,
+        hasMoreMessages,
+        isLoadingOlder
+    ) {
+        if (isKeyboardVisible && messages.isNotEmpty()) {
+            snapshotFlow { imeInsets.getBottom(density) }
+                .filter { it > 0 }
+                .distinctUntilChanged()
+                .collect {
+                    val lastListItemIndex = listState.layoutInfo.totalItemsCount - 1
+                    if (lastListItemIndex >= 0) {
+                        listState.scrollToItem(lastListItemIndex, Int.MAX_VALUE)
+                        initialScrollComplete = true
+                    }
+                }
         }
     }
     LaunchedEffect(listState, hasMoreMessages) {
@@ -308,11 +288,16 @@ private fun RemoteChatPanel(
             }
     }
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .imePadding()
+            .heightIn(min = 0.dp)
+    ) {
         LazyColumn(
             state = listState,
             modifier = Modifier
-                .weight(1f)
+                .weight(1f, fill = true)
                 .fillMaxWidth()
                 .padding(horizontal = 2.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
